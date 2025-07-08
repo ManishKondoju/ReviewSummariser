@@ -1,141 +1,63 @@
-# 📘 ReviewSummariser GPT
 
-ReviewSummariser GPT is a fine-tuned T5-small model that takes long, detailed product reviews and generates short, helpful summaries. Three configurations (Config1, Config2, Config3) were trained and compared for performance optimization.
+# 🧠 Review Summarizer GPT (Config1)
 
----
+This project demonstrates fine-tuning a T5-small transformer model to summarize product reviews and classify their sentiment. Built using Hugging Face Transformers, trained on a custom review-summary dataset, and deployed with Gradio UI on Hugging Face Spaces.
 
-## 🚀 Project Structure
-.
-├── data/ # Contains ReviewLarge.csv
-├── training/ # Scripts for Config1, Config2, Config3
-├── evaluation/ # Evaluation scripts and outputs
-├── output.png # Metrics comparison chart
-├── assignment.ipynb # Full Kaggle-compatible training + evaluation notebook
-├── requirements.txt
-└── README.md
+## 🚀 Features
+- Fine-tuned T5-small for summarizing user reviews.
+- Sentiment classification (positive/negative) using Hugging Face sentiment pipeline.
+- Config1 trained with:
+  - 5 epochs
+  - Learning rate: 5e-5
+  - Beam search for generation
+- CPU/GPU-compatible training.
+- Deployed on Hugging Face Space with UI.
 
+## 🗃️ Dataset
+- Used `ReviewLarge.csv` (1000+ product reviews).
+- Columns:
+  - `review` → Raw input text
+  - `summary` → Target summary text
+- Split: 80% train / 20% test
 
----
+## 🧼 Preprocessing & Tokenization
 
-## 📊 Dataset
-
-**File:** `ReviewLarge.csv`  
-**Columns:**  
-- `review`: Raw product review  
-- `summary`: Ground truth summary
-
-**Preprocessing:**
-
-import pandas as pd
-
-df = pd.read_csv("ReviewLarge.csv")
-df = df.rename(columns={"review": "input", "summary": "target"})
-
-
----
-
-## ⚙️ Setup Instructions
-
-### Step 1: Install Dependencies
-
-
-pip install -r requirements.txt
-Required packages include:
-
-transformers
-
-datasets
-
-evaluate
-
-gradio
-
-pandas
-
-matplotlib
-
-scikit-learn
-
-tqdm
-
-torch (CUDA recommended)
-
-## Dataset
-
-We use a custom ReviewLarge.csv with 1000+ samples. It includes two columns:
-
-review — the input product review
-
-summary — the target summary
-
-
-
-## Preprocessing
-### Step 1: Load and Clean Data
-
-import pandas as pd
+```python
 from datasets import Dataset
-
-df = pd.read_csv("ReviewLarge.csv")
-df = df.rename(columns={"review": "input_text", "summary": "target_text"})
-dataset = Dataset.from_pandas(df)
-dataset = dataset.train_test_split(test_size=0.2, seed=42)
-
-
-
-### Step 2: Tokenization
-
 from transformers import AutoTokenizer
 
+df = pd.read_csv("ReviewLarge.csv").rename(columns={"review": "input", "summary": "target"})
+dataset = Dataset.from_pandas(df)
 tokenizer = AutoTokenizer.from_pretrained("t5-small")
 
-def preprocess(example):
-    model_input = tokenizer(example["input_text"], padding="max_length", truncation=True, max_length=512)
-    label = tokenizer(example["target_text"], padding="max_length", truncation=True, max_length=60)
-    model_input["labels"] = label["input_ids"]
-    return model_input
+def preprocess_function(examples):
+    inputs = tokenizer(examples["input"], truncation=True, padding="max_length", max_length=512)
+    targets = tokenizer(examples["target"], truncation=True, padding="max_length", max_length=60)
+    inputs["labels"] = targets["input_ids"]
+    return inputs
 
-tokenized_data = dataset.map(preprocess, batched=True)
+tokenized_data = dataset.train_test_split(test_size=0.2, seed=42).map(preprocess_function, batched=True)
+```
 
+## 🧠 Fine-Tuning (Config1)
 
-## Configurations for Fine-Tuning
-Config 1
-Epochs: 5
-
-Learning rate: 5e-5
-
-
-from transformers import TrainingArguments
-
-TrainingArguments(
-    output_dir="./results_config1",
-    num_train_epochs=5,
-    learning_rate=5e-5,
-    per_device_train_batch_size=4,
-    save_strategy="epoch",
-    report_to="none"
-)
-
-
-Config 2
-Epochs: 4
-
-Learning rate: 3e-5
-
-Modified generation: beam search, length penalty
-
-Config 3
-Epochs: 3
-
-Learning rate: 2e-5
-
-Lightweight version for faster training
-
-## 🏃‍♂️ Training
-
-from transformers import Trainer, AutoModelForSeq2SeqLM
+```python
+from transformers import AutoModelForSeq2SeqLM, TrainingArguments, Trainer
 
 model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
+
+training_args = TrainingArguments(
+    output_dir="./results_config1_kaggle",
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    num_train_epochs=5,
+    learning_rate=5e-5,
+    save_strategy="epoch",
+    logging_steps=10,
+    save_total_limit=2,
+    push_to_hub=False,
+    report_to="none"
+)
 
 trainer = Trainer(
     model=model,
@@ -146,32 +68,48 @@ trainer = Trainer(
 )
 
 trainer.train()
-trainer.save_model("./results_configX/checkpoint-final")
-Replace X with 1, 2, or 3 depending on configuration.
+```
 
-## 🎯 Sentiment Classification
-We use Hugging Face sentiment pipeline for extra layer of interpretation:
+## 📈 Evaluation Metrics (on 100 test samples)
 
+| Metric    | T5-small | Config1 |
+|-----------|----------|---------|
+| ROUGE-1   | 0.0860   | 0.1841  |
+| ROUGE-2   | 0.0238   | 0.0816  |
+| ROUGE-L   | 0.0781   | 0.1762  |
+| ROUGE-Lsum| 0.0791   | 0.1769  |
+
+## 🎯 Inference Example (Gradio)
+
+```python
+import gradio as gr
 from transformers import pipeline
-sentiment = pipeline("sentiment-analysis")
-result = sentiment("I love the battery life but hate the design.")
 
+pipe = pipeline("summarization", model="Manish014/review-summariser-gpt-config1")
 
-## 🧪 Evaluation
-Metrics Used
-ROUGE (rouge1, rouge2, rougeL, rougeLsum)
+def summarize(text):
+    return pipe(text)[0]["summary_text"]
 
-BLEU
+gr.Interface(fn=summarize, inputs="textbox", outputs="textbox").launch()
+```
 
-BERTScore
+## 📦 Requirements
 
-import evaluate
-rouge = evaluate.load("rouge")
-bleu = evaluate.load("bleu")
-bertscore = evaluate.load("bertscore")
-Example Result (on 100 test samples):
-Config	ROUGE-1	ROUGE-2	ROUGE-L	BERTScore
-Base	0.086	0.024	0.078	-
-Config 1	0.184	0.082	0.176	✅
-Config 2	0.191	0.085	0.182	✅
-Config 3	0.172	0.078	0.165	✅
+```bash
+pip install transformers datasets evaluate gradio
+```
+
+## 📁 Files
+
+- `train_config1.py` – Fine-tuning script
+- `evaluate_config1.py` – Metric-based evaluation
+- `app.py` – Gradio UI
+- `ReviewLarge.csv` – Dataset
+
+---
+
+## 👨‍💻 Author
+Manish Kumar Kondoju  
+📧 kondoju.m@northeastern.edu  
+🔗 [LinkedIn](https://www.linkedin.com/in/manishkumar-kondoju/)  
+🔗 [GitHub Repo](https://github.com/ManishKondoju/ReviewSummariser)
